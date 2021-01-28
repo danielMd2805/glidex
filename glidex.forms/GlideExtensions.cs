@@ -1,6 +1,8 @@
-﻿#nullable enable
+#nullable enable
+
 using System;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Android.App;
@@ -18,6 +20,8 @@ namespace Android.Glide
 {
 	public static class GlideExtensions
 	{
+		#region Public Methods
+
 		public static async Task LoadViaGlide (this ImageView imageView, ImageSource source, CancellationToken token)
 		{
 			try {
@@ -37,13 +41,15 @@ namespace Android.Glide
 
 				switch (source) {
 					case FileImageSource fileSource:
-						builder = HandleFileImageSource (request, fileSource);
+						builder = HandleFileImageSource (imageView.Context, request, fileSource);
 						break;
+
 					case UriImageSource uriSource:
 						builder = HandleUriImageSource (request, uriSource);
 						break;
+
 					case StreamImageSource streamSource:
-						builder = await HandleStreamImageSource (request, streamSource, token, () => !IsActivityAlive (imageView, source));
+						builder = await HandleStreamImageSource (request, streamSource, token, () => !IsActivityAlive (imageView, source)).ConfigureAwait (false);
 						break;
 				}
 
@@ -58,13 +64,30 @@ namespace Android.Glide
 				if (builder is null) {
 					Clear (request, imageView);
 				} else {
-					imageView.Visibility = ViewStates.Visible;
-					builder.Into (imageView);
+					await Device.InvokeOnMainThreadAsync (() => {
+						imageView.Visibility = ViewStates.Visible;
+						builder.Into (imageView);
+					}).ConfigureAwait (false);
 				}
 			} catch (Exception exc) {
 				//Since developers can't catch this themselves, I think we should log it and silently fail
 				Forms.Warn ("Unexpected exception in glidex: {0}", exc);
 			}
+		}
+
+		#endregion Public Methods
+
+		#region Internal Methods
+
+		internal static void CancelGlide (this ImageView imageView)
+		{
+			if (imageView.Handle == IntPtr.Zero) {
+				return;
+			}
+
+			//NOTE: we may be doing a Cancel after the Activity has just exited
+			// To make this work we have to use the Application.Context
+			With (App.Application.Context).Clear (imageView);
 		}
 
 		/// <summary>
@@ -85,11 +108,13 @@ namespace Android.Glide
 
 				switch (source) {
 					case FileImageSource fileSource:
-						builder = HandleFileImageSource (request, fileSource);
+						builder = HandleFileImageSource (context, request, fileSource);
 						break;
+
 					case UriImageSource uriSource:
 						builder = HandleUriImageSource (request, uriSource);
 						break;
+
 					case StreamImageSource streamSource:
 						builder = await HandleStreamImageSource (request, streamSource, token, () => !IsActivityAlive (context, source));
 						break;
@@ -114,12 +139,29 @@ namespace Android.Glide
 			return null;
 		}
 
-		static RequestBuilder HandleFileImageSource (RequestManager request, FileImageSource source)
+		#endregion Internal Methods
+
+		#region Private Methods
+
+		/// <summary>
+		/// Cancels the Request and "clears" the ImageView
+		/// </summary>
+		private static void Clear (RequestManager request, ImageView imageView)
+		{
+			imageView.Visibility = ViewStates.Gone;
+			imageView.SetImageBitmap (null);
+
+			//We need to call Clear for Glide to know this image is now unused
+			//https://bumptech.github.io/glide/doc/targets.html
+			request.Clear (imageView);
+		}
+
+		private static RequestBuilder HandleFileImageSource (Context? context, RequestManager request, FileImageSource source)
 		{
 			RequestBuilder builder;
 			var fileName = source.File;
-			var drawable = ResourceManager.GetDrawableByName (fileName);
-			if (drawable != 0) {
+			var drawable = Forms.ResourceContainer?.GetDrawable (fileName);
+			if (drawable != null && drawable.Value != 0) {
 				Forms.Debug ("Loading `{0}` as an Android resource", fileName);
 				builder = request.Load (drawable);
 			} else {
@@ -129,29 +171,29 @@ namespace Android.Glide
 			return builder;
 		}
 
-		static RequestBuilder HandleUriImageSource (RequestManager request, UriImageSource source)
+		private static async Task<RequestBuilder?> HandleStreamImageSource (RequestManager request, StreamImageSource source, CancellationToken token, Func<bool> cancelled)
+		{
+			Forms.Debug ("Loading `{0}` as a byte[]. Consider using `AndroidResource` instead, as it would be more performant", nameof (StreamImageSource));
+			using var memoryStream = new MemoryStream ();
+			using var stream = await source.Stream (token).ConfigureAwait (false);
+			if (token.IsCancellationRequested || cancelled ())
+				return null;
+			if (stream is null)
+				return null;
+			await stream.CopyToAsync (memoryStream, token).ConfigureAwait (false);
+			if (token.IsCancellationRequested || cancelled ())
+				return null;
+			return request.AsBitmap ().Load (memoryStream.ToArray ());
+		}
+
+		private static RequestBuilder HandleUriImageSource (RequestManager request, UriImageSource source)
 		{
 			var url = source.Uri.OriginalString;
 			Forms.Debug ("Loading `{0}` as a web URL", url);
 			return request.Load (url);
 		}
 
-		static async Task<RequestBuilder?> HandleStreamImageSource (RequestManager request, StreamImageSource source, CancellationToken token, Func<bool> cancelled)
-		{
-			Forms.Debug ("Loading `{0}` as a byte[]. Consider using `AndroidResource` instead, as it would be more performant", nameof (StreamImageSource));
-			using var memoryStream = new MemoryStream ();
-			using var stream = await source.Stream (token);
-			if (token.IsCancellationRequested || cancelled ())
-				return null;
-			if (stream is null)
-				return null;
-			await stream.CopyToAsync (memoryStream, token);
-			if (token.IsCancellationRequested || cancelled ())
-				return null;
-			return request.AsBitmap ().Load (memoryStream.ToArray ());
-		}
-
-		static bool IsActivityAlive (ImageView imageView, ImageSource source)
+		private static bool IsActivityAlive (ImageView imageView, ImageSource source)
 		{
 			// The imageView.Handle could be IntPtr.Zero? Meaning we somehow have a reference to a disposed ImageView...
 			// I think this is within the realm of "possible" after the await call in LoadViaGlide().
@@ -166,7 +208,7 @@ namespace Android.Glide
 		/// <summary>
 		/// NOTE: see https://github.com/bumptech/glide/issues/1484#issuecomment-365625087
 		/// </summary>
-		static bool IsActivityAlive (Context? context, ImageSource source)
+		private static bool IsActivityAlive (Context? context, ImageSource source)
 		{
 			//NOTE: in some cases ContextThemeWrapper is Context
 			var activity = context as Activity ?? Forms.Activity;
@@ -189,28 +231,6 @@ namespace Android.Glide
 			return true;
 		}
 
-		/// <summary>
-		/// Cancels the Request and "clears" the ImageView
-		/// </summary>
-		static void Clear (RequestManager request, ImageView imageView)
-		{
-			imageView.Visibility = ViewStates.Gone;
-			imageView.SetImageBitmap (null);
-
-			//We need to call Clear for Glide to know this image is now unused
-			//https://bumptech.github.io/glide/doc/targets.html
-			request.Clear (imageView);
-		}
-
-		internal static void CancelGlide (this ImageView imageView)
-		{
-			if (imageView.Handle == IntPtr.Zero) {
-				return;
-			}
-
-			//NOTE: we may be doing a Cancel after the Activity has just exited
-			// To make this work we have to use the Application.Context
-			With (App.Application.Context).Clear (imageView);
-		}
+		#endregion Private Methods
 	}
 }

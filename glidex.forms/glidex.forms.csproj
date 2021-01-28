@@ -54,6 +54,7 @@
     <Compile Include="ImageButtonRenderer.cs" />
     <Compile Include="ImageRenderer.cs" />
     <Compile Include="ImageViewHandler.cs" />
+    <Compile Include="IResourceContainer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="IGlideHandler.cs" />
   </ItemGroup>

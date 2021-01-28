@@ -1,4 +1,5 @@
 ﻿#nullable enable
+
 using System.Threading;
 using System.Threading.Tasks;
 using Android.Content;
@@ -17,21 +18,29 @@ namespace Android.Glide
 	[Preserve (AllMembers = true)]
 	public class ImageViewHandler : IImageViewHandler, IImageSourceHandler
 	{
+		#region Public Constructors
+
 		public ImageViewHandler ()
 		{
 			Forms.Debug ("IImageViewHandler of type `{0}`, instance created.", GetType ());
 		}
 
-		public async Task LoadImageAsync (ImageSource source, ImageView imageView, CancellationToken token = default)
+		#endregion Public Constructors
+
+		#region Public Methods
+
+		public Task LoadImageAsync (ImageSource source, ImageView imageView, CancellationToken token = default)
 		{
 			Forms.Debug ("IImageViewHandler of type `{0}`, `{1}` called.", GetType (), nameof (LoadImageAsync));
-			await imageView.LoadViaGlide (source, token);
+			return imageView.LoadViaGlide (source, token);
 		}
 
-		public async Task<Bitmap?> LoadImageAsync (ImageSource source, Context context, CancellationToken token = default)
+		public Task<Bitmap?> LoadImageAsync (ImageSource source, Context context, CancellationToken token = default)
 		{
 			Forms.Debug ("IImageSourceHandler of type `{0}`, `{1}` called.", GetType (), nameof (LoadImageAsync));
-			return await source.LoadViaGlide (context, token);
+			return source.LoadViaGlide (context, token);
 		}
+
+		#endregion Public Methods
 	}
 }
