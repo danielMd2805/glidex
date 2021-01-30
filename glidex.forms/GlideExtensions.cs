@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 using System;
 using System.IO;
@@ -156,15 +156,15 @@ namespace Android.Glide
 			request.Clear (imageView);
 		}
 
-		private static RequestBuilder HandleFileImageSource (Context? context, RequestManager request, FileImageSource source)
+		private static RequestBuilder? HandleFileImageSource (Context? context, RequestManager request, FileImageSource source)
 		{
-			RequestBuilder builder;
+			RequestBuilder? builder = null;
 			var fileName = source.File;
 			var drawable = Forms.ResourceContainer?.GetDrawable (fileName);
 			if (drawable != null && drawable.Value != 0) {
 				Forms.Debug ("Loading `{0}` as an Android resource", fileName);
 				builder = request.Load (drawable);
-			} else {
+			} else if (!string.IsNullOrEmpty (fileName)) {
 				Forms.Debug ("Loading `{0}` from disk", fileName);
 				builder = request.Load (fileName);
 			}
