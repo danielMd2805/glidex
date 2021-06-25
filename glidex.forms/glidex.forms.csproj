@@ -48,7 +48,7 @@
     <PackageReference Include="Xamarin.Forms" Version="5.0.0.2012" ExcludeAssets="build">
       <IncludeAssets>runtime; compile; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Xamarin.Android.Glide" Version="4.11.0.1" />
+    <PackageReference Include="Xamarin.Android.Glide" Version="4.12.0" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Forms.cs" />
